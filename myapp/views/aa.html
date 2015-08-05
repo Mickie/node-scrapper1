@@ -1,0 +1,248 @@
+<html>
+<head>
+    <title>manfen5.com数学－试题</title>
+    <script src="/javascripts/jquery-1.9.1.min.js"></script>
+    <script src="/javascripts/d3.min.js"></script>
+    <script src="/javascripts/underscore.js"></script>
+    <style>
+        .linestyle{
+            stroke:#eee;
+            fill:none;
+        }
+        #mypath{
+            fill:none;
+            stroke:blue;
+        }
+        .axis line,
+        .axis path {
+            fill: none;
+            stroke: #000;
+            shape-rendering: crispEdges;
+        }
+    </style>
+    <script>
+        function fire(){ //manfen5.com
+            var gradeSelected=$('#grade').val();
+            $.ajax({
+                url:"/scrapper",
+                data:{grade:gradeSelected},
+                error:function(){
+                 alert('err');
+                },
+                success:function(data){
+                    $('#result').empty();
+                    var theData=JSON.parse(data);
+                    for(var i=0;i<theData.length;i++){
+                        var item=(theData[i]);
+                          var result="<p>{ q: "+item.que+" , a: "+item.ans+"}</p>";
+                        $("#result").append(result);
+                    }
+                }
+            })
+        }
+
+        function getRec(){
+            var openid=$('#openid').val();
+            $.ajax({
+                url:'/getRec',
+                error:function(){
+                    alert('err');
+                },
+                success:function(data){
+                    $('#result').empty();
+                    var theData=JSON.parse(data);
+                    visualizeData(theData);
+                }
+            })
+        }
+
+        function visualizeData(dataArray){
+            var w=1000;
+            var h=500;
+            var svg=d3.select('#result').append('svg').attr('width',w).attr('height',h);
+            var cur=0;
+            var hscale=20,
+                vscale=20,
+                horlineArray=[],
+                verlineArray=[],
+                lineArray=[],
+                margin=10;
+
+            var harray=[],
+                varray=[],
+                pathArray=[],
+                newPathArray=[],
+                dataAttr=[];
+
+            function createBaseChart(hscale,vscale){
+                for(var i=0;i<w/vscale;i++){
+                    var innerArray=[];
+                    innerArray[0]=i*vscale;
+                    innerArray[1]=0;
+                    innerArray[2]=i*vscale;
+                    innerArray[3]=h;
+                    horlineArray.push(innerArray);
+                }
+                for(var j=0;j<h/hscale;j++){
+                    var innerArray=[];
+                    innerArray[0]=0;
+                    innerArray[1]=j*hscale;
+                    innerArray[2]=w;
+                    innerArray[3]=j*hscale;
+                    verlineArray.push(innerArray);
+                }
+                lineArray=horlineArray.concat(verlineArray);
+                var line=svg.selectAll('line').data(lineArray).enter().append('line')
+                        .attr('class','linestyle')
+                        .attr('x1',function(d){return d[0]})
+                        .attr('y1',function(d){return d[1]})
+                        .attr('x2',function(d){return d[2]})
+                        .attr('y2',function(d){return d[3]});
+                var path=svg.append('path').attr('id','mypath');
+            };
+
+            createBaseChart(hscale,vscale);
+            d3it();
+
+            function d3it(){
+                for(var i=0;i<dataArray.length;i++){
+                    var item=dataArray[i];
+                    varray.push((new Date(item.scoreTime)).getTime());
+                    harray.push(item.val);
+                }
+                for(var i=0;i<dataArray.length;i++){
+                    var obj=dataArray[i];
+                    var obj1={};
+                    obj1.x=scaleFunc(varray,w,(new Date(obj.scoreTime)).getTime(),'v');
+                    obj1.y=scaleFunc(harray,h,obj.val,'h');
+                    pathArray.push(obj1);
+                }
+
+                function scaleFunc(array,param,num,dir){
+                    var scale=d3.scale.linear();
+                    if(dir=='v'){
+                        scale.domain([d3.min(array),d3.max(array)]).range([margin,param-margin]);
+                    }else{
+                        scale.domain([0,d3.max(array)]).range([margin,param-margin]);
+                    }
+                    return scale(num);
+                }
+                console.log(pathArray);
+                newPathArray=createArray(pathArray);
+                console.log(newPathArray);
+                dataAttr=createData(pathArray);
+                console.log(dataAttr);
+                pathtransition();
+
+                //end transition
+
+            }
+
+            function createArray(array){
+                var newArray=[];
+                console.log('arr length '+array.length);
+                for(var i=0;i<array.length;i++){
+                    newArray[i]=[];
+                    for(var j=0;j<=i;j++){
+                        var obj={};
+                        obj=array[j];
+                        newArray[i].push(obj);
+                    }
+                    for(var k=0;k<(array.length-newArray.length);k++){
+                        var obj=array[newArray.length-1];
+                        newArray[i].push(obj);
+                    }
+                }
+                return newArray;
+            }
+
+            function createData(array){
+                var returnStr="";
+                for(var i=0;i<array.length;i++){
+                    var str=(i==0)?"M"+array[i].x+' '+array[i].y+' ':"L"+array[i].x+' '+array[i].y+' ';
+                    returnStr+=str;
+                }
+                return returnStr;
+            }
+
+            function pathtransition(){
+                d3.select('#mypath').transition()
+                        .delay(50)
+                        .duration(50)
+                        .ease('linear')
+                        .attr('d',createData(newPathArray[cur]))
+                        .each('end',function(){
+                            cur+=1;
+                            if(newPathArray[cur]!==undefined){
+                                subtransition(createData(newPathArray[cur]));
+                                console.log('end transition'+cur);
+                                var text=svg.selectAll('text').data(pathArray).enter().append('text')
+                                        .attr('x',function(d){return d.x})
+                                        .attr('y',function(d){return d.y})
+                                        .attr('font-size','8')
+                                        .text(function(d,i){ return dataArray[i].val})
+                                        .attr('text-anchor','middle');
+                                var circle=svg.selectAll('circle').data(pathArray).enter().append('circle')
+                                        .attr('r','5')
+                                        .attr('cx',function(d){return d.x})
+                                        .attr('cy',function(d){return d.y})
+                                        .attr('fill','red')
+                                        .on('mouseover',function(){
+                                            d3.select(this).attr('fill','green');
+                                        }).on('mouseout',function(){
+                                            d3.select(this).attr('fill','red');
+                                        });
+                                //append axis
+                                //var xAxisText=d3.time.scale().domain([d3.min(varray),d3.max(varray)]).range([margin,w-margin]);
+                                var xAxisText=d3.time.scale().domain([d3.min(varray),d3.max(varray)]).range([0,w]);
+                                var xAxis=d3.svg.axis().scale(xAxisText);
+                                svg.append('g').attr('class','x axis').attr('transform','translate('+margin+','+(h-margin)+')').call(xAxis)
+                                        .selectAll('text').attr('y',0).attr('x',0).attr('dy','1.5em').attr('font-size','8px');
+                            }
+                        })
+            }
+
+            function subtransition(str){
+                if(str){
+                    d3.select('#mypath').transition()
+                            .delay(25)
+                            .duration(50).ease('linear').attr('d',str)
+                            .each('end',function(){
+                                cur+=1;
+                                if (newPathArray[cur]!==undefined){
+                                    subtransition(createData(newPathArray[cur]));
+                                }
+                    });
+                }
+            }
+
+
+
+        }
+
+    </script>
+</head>
+<body>
+
+<div id="wrapper">
+    <div id="main-content">
+    <h3>满分网</h3>
+    <label>选择数学－试题</label>
+      <select id="grade">
+          <option value="G010">grade 7</option>
+          <option value="G020">grade 8</option>
+          <option value="G030">grade 9</option>
+      </select>
+    <button onclick="fire()">start</button>
+    <br>
+    <hr>
+    <br>
+    <h2>score info</h2>
+    <button onclick="getRec()">start</button>
+    </div>
+</div>
+<div id="result"></div>
+</body>
+</html>
+
+
